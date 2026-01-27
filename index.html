@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D Infinite Gallery</title>
+    <!-- Cloudinary Player CSS -->
+    <link href="https://unpkg.com/cloudinary-video-player@1.10.6/dist/cld-video-player.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --carousel-width: 200px;
+            --carousel-height: 280px;
+            /* Base Theme Colors */
+            --hue: 330; /* Default pink */
+            --neon-pink: hsl(var(--hue), 100%, 50%);
+            --neon-glow: hsla(var(--hue), 100%, 50%, 0.4);
+            --pink-overlay: hsla(var(--hue), 100%, 50%, 0.25);
+            --terminal-pink: hsl(var(--hue), 100%, 65%);
+            --bg-dark: #050505;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-dark); 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            perspective: 1200px;
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #canvas-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .scene {
+            width: var(--carousel-width);
+            height: var(--carousel-height);
+            position: relative;
+            z-index: 5;
+            transform-style: preserve-3d;
+            pointer-events: none;
+            transition: transform 0.5s cubic-bezier(0.2, 0, 0.2, 1);
+        }
+
+        .carousel {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-style: preserve-3d;
+            will-change: transform;
+        }
+
+        .carousel__item {
+            position: absolute;
+            width: var(--carousel-width);
+            height: var(--carousel-height);
+            left: 0;
+            top: 0;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+            background: #000;
+            border: 1px solid hsla(var(--hue), 100%, 50%, 0.3);
+            pointer-events: auto;
+            backface-visibility: hidden;
+            transition: filter 0.5s, border-color 0.3s, opacity 0.5s, box-shadow 0.3s;
+            user-select: none;
+            cursor: pointer;
+            backdrop-filter: blur(4px);
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .carousel__item::before {
+            content: attr(data-index-display);
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: var(--terminal-pink);
+            background: rgba(0, 0, 0, 0.7);
+            padding: 2px 6px;
+            border: 1px solid var(--terminal-pink);
+            z-index: 20;
+            border-radius: 2px;
+            text-shadow: 0 0 5px var(--neon-glow);
+            letter-spacing: 1px;
+            pointer-events: none;
+        }
+
+        .carousel__item .crt-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            ), 
+            linear-gradient(
+                90deg, 
+                rgba(255, 0, 0, 0.03), 
+                rgba(0, 255, 0, 0.01), 
+                rgba(0, 0, 255, 0.03)
+            );
+            background-size: 100% 3px, 3px 100%;
+            z-index: 10;
+            pointer-events: none;
+            opacity: 0.6;
+            animation: crtFlicker 0.15s infinite;
+        }
+
+        @keyframes crtFlicker {
+            0% { opacity: 0.55; }
+            50% { opacity: 0.65; }
+            100% { opacity: 0.55; }
+        }
+
+        .carousel__item::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--pink-overlay);
+            mix-blend-mode: color; 
+            z-index: 3;
+            pointer-events: none;
+            transition: opacity 0.8s ease;
+        }
+
+        .carousel__item.active::after { opacity: 0; }
+        
+        .carousel__item img, .carousel__item video, .carousel__item iframe, .carousel__item .cld-video-player {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            filter: saturate(0.4) brightness(0.7);
+            pointer-events: none;
+            display: block;
+            opacity: 0.8; 
+            transition: opacity 0.6s ease, filter 0.6s ease;
+            border: none;
+        }
+
+        .carousel__item.active img, .carousel__item.active video, .carousel__item.active iframe, .carousel__item.active .cld-video-player {
+            filter: saturate(1) brightness(1);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .cld-video-player.cld-fluid {
+            width: 100% !important;
+            height: 100% !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* --- UI COMPONENTS --- */
+        .system-menu-btn {
+            position: fixed;
+            top: 25px;
+            left: 25px;
+            z-index: 3000;
+            width: 45px;
+            height: 45px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--terminal-pink);
+            color: var(--terminal-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--neon-glow);
+            transition: all 0.3s;
+        }
+
+        .portals-sidebar {
+            position: fixed;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 260px;
+            background: rgba(5, 5, 5, 0.95);
+            border-right: 1px solid var(--terminal-pink);
+            z-index: 2999;
+            font-family: 'Courier New', monospace;
+            color: var(--terminal-pink);
+            padding: 100px 20px 20px 20px;
+            transform: translateX(-100%);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            backdrop-filter: blur(15px);
+        }
+        .portals-sidebar.active { transform: translateX(0); }
+
+        .portal-card {
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid hsla(var(--hue), 100%, 65%, 0.3);
+            padding: 15px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .comments-section {
+            position: fixed;
+            right: 30px;
+            top: 100px;
+            bottom: 100px;
+            width: 320px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid var(--terminal-pink);
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            font-family: 'Courier New', monospace;
+            color: var(--terminal-pink);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 0 20px var(--neon-glow);
+            transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+            clip-path: polygon(0 0, 100% 0, 100% 0, 100% calc(100% - 40px), calc(100% - 40px) 100%, 0 100%);
+        }
+        .comments-section.hidden { transform: translateX(380px); }
+
+        .comment-input, .user-name-input {
+            width: 100%; background: transparent; border: 1px solid hsla(var(--hue), 100%, 65%, 0.5);
+            color: #fff; padding: 8px; font-family: inherit; font-size: 12px; margin-bottom: 10px; outline: none; box-sizing: border-box;
+        }
+
+        .comment-submit {
+            width: 100%; background: var(--terminal-pink); color: #000; border: none; padding: 8px;
+            font-family: inherit; font-weight: bold; cursor: pointer; text-transform: uppercase;
+        }
+
+        .toggle-comments {
+            position: fixed; right: 30px; bottom: 30px; width: 48px; height: 48px;
+            background: rgba(0, 0, 0, 0.8); border: 2px solid var(--terminal-pink); border-radius: 50%;
+            z-index: 1001; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--terminal-pink);
+        }
+
+        .nav-arrow {
+            position: fixed; top: 50%; transform: translateY(-50%) scale(0);
+            width: 60px; height: 60px; background: rgba(0, 0, 0, 0.8); border: 1px solid var(--terminal-pink);
+            border-radius: 50%; z-index: 2000; display: flex; align-items: center; justify-content: center;
+            cursor: pointer; color: var(--terminal-pink); font-size: 24px; opacity: 0; pointer-events: none;
+        }
+        .nav-arrow.visible { transform: translateY(-50%) scale(1); opacity: 1; pointer-events: auto; }
+        .nav-arrow.left { left: 5vw; }
+        .nav-arrow.right { right: 5vw; }
+
+        /* Audio UI */
+        .audio-container {
+            position: fixed; bottom: 30px; left: 30px; width: 280px; padding: 25px 15px 15px 15px; z-index: 100;
+            background: rgba(0, 0, 0, 0.85); clip-path: polygon(40px 0, 100% 0, 100% 100%, 0 100%, 0 40px);
+            backdrop-filter: blur(10px); font-family: 'Courier New', monospace; color: var(--terminal-pink); font-size: 10px;
+            transition: transform 0.4s; box-shadow: 0 0 20px var(--neon-glow);
+        }
+        .audio-container.hidden { transform: translateX(-350px); }
+        .show-audio {
+            position: fixed; bottom: 30px; left: 30px; z-index: 99; width: 48px; height: 48px;
+            background: rgba(0, 0, 0, 0.8); border: 2px solid var(--terminal-pink); border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; cursor: pointer;
+            transform: scale(0); opacity: 0; color: var(--terminal-pink); transition: 0.3s;
+        }
+        .show-audio.visible { transform: scale(1); opacity: 1; }
+        audio { width: 100%; height: 30px; filter: invert(100%) hue-rotate(180deg) brightness(1.5); opacity: 0.8; }
+
+        #usernameOverlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.95); z-index: 5000;
+            display: flex; align-items: center; justify-content: center; font-family: 'Courier New', monospace; color: var(--terminal-pink);
+        }
+        #usernameOverlay.hidden { display: none; }
+        .username-box { width: 300px; padding: 30px; border: 1px solid var(--terminal-pink); background: #050505; }
+
+        #archiveModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.9);
+            z-index: 6000; display: flex; align-items: center; justify-content: center;
+            font-family: 'Courier New', monospace; color: var(--terminal-pink); visibility: hidden; opacity: 0; transition: 0.3s;
+        }
+        #archiveModal.active { visibility: visible; opacity: 1; }
+        .archive-content { width: 80%; max-width: 600px; height: 70vh; background: #050505; border: 1px solid var(--terminal-pink); padding: 20px; display: flex; flex-direction: column; }
+        .hue-slider { width: 100%; -webkit-appearance: none; background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); height: 6px; border-radius: 3px; outline: none; }
+    </style>
+</head>
+<body>
+
+    <div class="system-menu-btn" id="btnToggleMenu">☰</div>
+
+    <div class="portals-sidebar" id="sideMenu">
+        <div style="font-size: 14px; margin-bottom: 20px;">SYSTEM_NODES</div>
+        <div class="portal-card" id="igPortal">IG_STORY_HIGHLIGHT [OPEN]</div>
+        <div class="portal-card" id="btnOpenArchive">SECURE_ARCHIVE [UNLOCKED]</div>
+    </div>
+
+    <div id="archiveModal">
+        <div class="archive-content">
+            <div style="display:flex; justify-content:space-between; border-bottom:1px solid var(--terminal-pink); padding-bottom:10px;">
+                <span>SYSTEM_LOG</span>
+                <span id="btnCloseArchive" style="cursor:pointer;">[EXIT]</span>
+            </div>
+            <div style="margin: 20px 0;">
+                <div style="font-size: 10px; margin-bottom: 5px;">HUE_CALIBRATION</div>
+                <input type="range" min="0" max="360" value="330" class="hue-slider" id="uiHueSlider">
+            </div>
+            <div id="archiveLog" style="flex-grow:1; overflow-y:auto; font-size:11px;"></div>
+        </div>
+    </div>
+
+    <div id="usernameOverlay">
+        <div class="username-box">
+            <h2 style="font-size: 16px;">SECURE_HANDSHAKE:</h2>
+            <input type="text" id="initialUsernameInput" class="user-name-input" placeholder="Alias..." maxlength="15">
+            <button class="comment-submit" id="btnSaveUsername">Connect</button>
+        </div>
+    </div>
+
+    <div class="comments-section hidden" id="commentsSection">
+        <div style="padding:15px; border-bottom:1px solid var(--terminal-pink);">TERMINAL_FEED</div>
+        <div class="comments-list" id="commentsList" style="flex-grow:1; overflow-y:auto; padding:15px;"></div>
+        <div style="padding:15px; border-top:1px solid var(--terminal-pink);">
+            <div id="currentUserLabel" style="font-size:10px; margin-bottom:5px;">ALIAS: ANON</div>
+            <input type="text" class="comment-input" id="commentInput" placeholder="Enter message..." maxlength="100">
+            <button class="comment-submit" id="btnSubmitComment">Transmit</button>
+        </div>
+    </div>
+
+    <div class="toggle-comments" id="btnToggleComments">💬</div>
+
+    <div class="audio-container" id="audioPlayer">
+        <button id="btnHideAudio" style="position:absolute; top:10px; right:10px; background:none; border:none; color:var(--terminal-pink); cursor:pointer;">✕</button>
+        <div style="margin-bottom: 8px;">NODE_STREAM: CAFÉ DEL MAR</div>
+        <audio controls loop id="mainAudio">
+            <source src="https://raw.githubusercontent.com/RobertHogan/html/master/Caf%C3%A9%20Del%20Mar%20(Energy%2052)%20MIDI%20Rearranged%20by%20De%20(3).mp3" type="audio/mpeg">
+        </audio>
+    </div>
+    <div class="show-audio" id="btnShowAudio">🎵</div>
+
+    <div class="nav-arrow left" id="navLeft">❮</div>
+    <div class="nav-arrow right" id="navRight">❯</div>
+
+    <div class="scene" id="scene">
+        <div class="carousel" id="carousel">
+            <div class="carousel__item" data-index-display="01"><div class="crt-overlay"></div><img src="https://imagine-public.x.ai/imagine-public/share-images/8c61f6c7-acb8-4219-bf68-8a136595c7bb.png"></div>
+            <div class="carousel__item" data-index-display="02"><div class="crt-overlay"></div><video id="cloudinary-player" class="cld-video-player cld-fluid"></video></div>
+            <div class="carousel__item" data-index-display="03"><div class="crt-overlay"></div><img src="https://imagine-public.x.ai/imagine-public/share-images/bb55dbfa-9050-49b7-885c-380bc2687985.jpg"></div>
+            <div class="carousel__item" data-index-display="04"><div class="crt-overlay"></div><video muted playsinline id="yoYoVideo"><source src="https://raw.githubusercontent.com/RobertHogan/html/master/grok_video_2026-01-22-00-04-32.mp4" type="video/mp4"></video></div>
+            <div class="carousel__item" data-index-display="05"><div class="crt-overlay"></div><img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=800&q=80"></div>
+            <div class="carousel__item" data-index-display="06"><div class="crt-overlay"></div><img src="https://images.unsplash.com/photo-1434725039720-abb26e22ebe8?auto=format&fit=crop&w=800&q=80"></div>
+        </div>
+    </div>
+
+    <canvas id="canvas-bg"></canvas>
+
+    <script src="https://unpkg.com/cloudinary-video-player@1.10.6/dist/cld-video-player.min.js"></script>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+          apiKey: "AIzaSyDhnoKxOcQ_ZlZXcrIscCj6mLb6PYN7ryc",
+          authDomain: "d-gallery-6620f.firebaseapp.com",
+          projectId: "d-gallery-6620f",
+          storageBucket: "d-gallery-6620f.firebasestorage.app",
+          messagingSenderId: "1087045258449",
+          appId: "1:1087045258449:web:4111c5ad8528ecc8e9c9f0"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = "d-gallery-live"; 
+
+        let user = null;
+        let userAlias = localStorage.getItem('system_alias') || 'ANON';
+
+        signInAnonymously(auth).catch(console.error);
+
+        onAuthStateChanged(auth, (u) => {
+            user = u;
+            if(user) {
+                const q = collection(db, 'artifacts', appId, 'public', 'data', 'comments');
+                onSnapshot(q, (snap) => {
+                    const list = document.getElementById('commentsList');
+                    list.innerHTML = '';
+                    const docs = [];
+                    snap.forEach(d => docs.push(d.data()));
+                    docs.sort((a,b) => (a.timestamp?.toMillis() || 0) - (b.timestamp?.toMillis() || 0));
+                    docs.forEach(d => {
+                        const div = document.createElement('div');
+                        div.style.fontSize = '11px'; div.style.marginBottom = '10px';
+                        div.innerHTML = `<span style="color:var(--terminal-pink)">[${d.alias}]:</span> ${d.text}`;
+                        list.appendChild(div);
+                    });
+                    list.scrollTop = list.scrollHeight;
+                });
+            }
+        });
+
+        document.getElementById('btnSubmitComment').onclick = async () => {
+            const input = document.getElementById('commentInput');
+            if(!input.value || !user) return;
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'comments'), {
+                text: input.value, alias: userAlias, userId: user.uid, timestamp: serverTimestamp()
+            });
+            input.value = '';
+        };
+
+        document.getElementById('btnSaveUsername').onclick = () => {
+            const val = document.getElementById('initialUsernameInput').value;
+            userAlias = val || 'User_' + Math.floor(Math.random()*999);
+            localStorage.setItem('system_alias', userAlias);
+            document.getElementById('currentUserLabel').textContent = `ALIAS: ${userAlias}`;
+            document.getElementById('usernameOverlay').classList.add('hidden');
+        };
+        if(localStorage.getItem('system_alias')) document.getElementById('usernameOverlay').classList.add('hidden');
+    </script>
+
+    <script>
+        let cldPlayer;
+        function initCloudinary() {
+            try {
+                cldPlayer = cloudinary.Cloudinary.new({ cloud_name: 'dasam3ful' }).videoPlayer('cloudinary-player', { fluid: true, loop: true });
+                cldPlayer.source('VID_20260122_113254_417_bsl_qd2gbf');
+            } catch(e) {}
+        }
+
+        const bgCanvas = document.getElementById('canvas-bg'), ctx = bgCanvas.getContext('2d');
+        const carousel = document.getElementById('carousel'), items = document.querySelectorAll('.carousel__item'), scene = document.getElementById('scene');
+        
+        let rotation = 0, targetRotation = 0, scale = 1, isDragging = false, startX = 0, lastActivity = Date.now();
+        let mouseX = 0, mouseY = 0;
+
+        // Pinch Zoom Support
+        let initialPinchDistance = null;
+        let initialScale = 1;
+
+        // Hexagon Background logic
+        const hexSize = 35;
+        const hexWidth = hexSize * Math.sqrt(3);
+        const hexHeight = hexSize * 2;
+        let hexGrid = [];
+
+        function initHexGrid() {
+            hexGrid = [];
+            const cols = Math.ceil(window.innerWidth / hexWidth) + 1;
+            const rows = Math.ceil(window.innerHeight / (hexHeight * 0.75)) + 1;
+            for (let r = 0; r < rows; r++) {
+                for (let c = 0; c < cols; c++) {
+                    const x = c * hexWidth + (r % 2 === 0 ? 0 : hexWidth / 2);
+                    const y = r * hexHeight * 0.75;
+                    hexGrid.push({ x, y, opacity: 0, targetOpacity: 0, lastPulse: 0 });
+                }
+            }
+        }
+
+        function drawHex(x, y, size, opacity) {
+            ctx.beginPath();
+            ctx.globalAlpha = opacity;
+            ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--terminal-pink');
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i - (Math.PI / 6);
+                const px = x + size * Math.cos(angle);
+                const py = y + size * Math.sin(angle);
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.stroke();
+        }
+
+        function setup() {
+            bgCanvas.width = window.innerWidth; bgCanvas.height = window.innerHeight;
+            initHexGrid();
+            const radius = window.innerWidth < 600 ? 300 : 450;
+            items.forEach((item, i) => {
+                const angle = (i / items.length) * Math.PI * 2;
+                item.style.transform = `translateX(${Math.sin(angle) * radius}px) translateZ(${Math.cos(angle) * radius}px) rotateY(${angle * 180 / Math.PI}deg)`;
+            });
+        }
+
+        // Interaction Logic
+        window.onmousedown = e => { 
+            if(e.target.tagName !== 'INPUT' && e.target.tagName !== 'BUTTON') { 
+                isDragging = true; 
+                startX = e.clientX; 
+            } 
+        };
+        window.onmousemove = e => { 
+            mouseX = e.clientX; mouseY = e.clientY;
+            if(isDragging) targetRotation -= (e.clientX - startX) * 0.3; 
+            startX = e.clientX; 
+            lastActivity = Date.now(); 
+        };
+        window.onmouseup = () => isDragging = false;
+
+        window.addEventListener('touchstart', e => { 
+            if(e.touches.length === 1) {
+                isDragging = true; 
+                startX = e.touches[0].clientX; 
+                mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY;
+            } else if(e.touches.length === 2) {
+                // Prepare for pinch zoom
+                initialPinchDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialScale = scale;
+            }
+        });
+
+        window.addEventListener('touchmove', e => { 
+            if(e.touches.length === 1 && isDragging) {
+                mouseX = e.touches[0].clientX; mouseY = e.touches[0].clientY;
+                targetRotation -= (e.touches[0].clientX - startX) * 0.3; 
+                startX = e.touches[0].clientX; 
+                lastActivity = Date.now(); 
+            } else if(e.touches.length === 2 && initialPinchDistance) {
+                const currentDistance = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const zoomFactor = currentDistance / initialPinchDistance;
+                scale = Math.min(Math.max(initialScale * zoomFactor, 1), 2.5);
+                updateZoom();
+            }
+        });
+
+        window.addEventListener('touchend', () => { 
+            isDragging = false; 
+            initialPinchDistance = null;
+        });
+
+        window.onwheel = e => { 
+            scale = Math.min(Math.max(scale + e.deltaY * -0.001, 1), 2.5); 
+            updateZoom(); 
+        };
+
+        function updateZoom() {
+            scene.style.transform = `translateZ(${(scale - 1) * 200}px) scale(${scale})`;
+            const isZoomed = scale > 1.1;
+            document.getElementById('navLeft').classList.toggle('visible', isZoomed);
+            document.getElementById('navRight').classList.toggle('visible', isZoomed);
+            
+            const step = 360 / items.length;
+            const activeIdx = Math.round((((targetRotation % 360) + 360) % 360) / step) % items.length;
+            items.forEach((item, i) => {
+                const active = isZoomed && i === activeIdx;
+                item.classList.toggle('active', active);
+                const vid = item.querySelector('video:not(#cloudinary-player)');
+                if(vid) active ? vid.play() : vid.pause();
+                if(i === 1 && cldPlayer) active ? cldPlayer.play() : cldPlayer.pause();
+            });
+        }
+
+        document.getElementById('navLeft').onclick = () => { targetRotation -= 360/items.length; updateZoom(); };
+        document.getElementById('navRight').onclick = () => { targetRotation += 360/items.length; updateZoom(); };
+
+        function loop() {
+            if(!isDragging && Date.now() - lastActivity > 4000 && scale < 1.1) targetRotation += 0.1;
+            rotation += (targetRotation - rotation) * 0.1;
+            carousel.style.transform = `rotateY(${-rotation}deg)`;
+            
+            // Background Animation
+            ctx.fillStyle = '#050505'; 
+            ctx.fillRect(0, 0, bgCanvas.width, bgCanvas.height);
+            
+            const now = Date.now();
+            hexGrid.forEach(hex => {
+                // Interactive distance check
+                const dx = hex.x - mouseX;
+                const dy = hex.y - mouseY;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                // Reaction to mouse/touch
+                if (dist < 150) {
+                    hex.targetOpacity = Math.max(hex.targetOpacity, (1 - dist/150) * 0.3);
+                }
+
+                // Random pulse
+                if (now - hex.lastPulse > 2000) {
+                    if (Math.random() > 0.998) {
+                        hex.targetOpacity = Math.random() * 0.15 + 0.05;
+                        hex.lastPulse = now;
+                    }
+                }
+
+                hex.opacity += (hex.targetOpacity - hex.opacity) * 0.05;
+                if (hex.opacity > 0.01) {
+                    drawHex(hex.x, hex.y, hexSize - 2, hex.opacity);
+                }
+                
+                // Decay
+                if (hex.opacity >= hex.targetOpacity - 0.01) hex.targetOpacity = 0;
+            });
+
+            requestAnimationFrame(loop);
+        }
+
+        document.getElementById('btnToggleComments').onclick = () => document.getElementById('commentsSection').classList.toggle('hidden');
+        document.getElementById('btnToggleMenu').onclick = () => document.getElementById('sideMenu').classList.toggle('active');
+        document.getElementById('btnOpenArchive').onclick = () => document.getElementById('archiveModal').classList.add('active');
+        document.getElementById('btnCloseArchive').onclick = () => document.getElementById('archiveModal').classList.remove('active');
+        document.getElementById('btnHideAudio').onclick = () => { document.getElementById('audioPlayer').classList.add('hidden'); document.getElementById('btnShowAudio').classList.add('visible'); };
+        document.getElementById('btnShowAudio').onclick = () => { document.getElementById('audioPlayer').classList.remove('hidden'); document.getElementById('btnShowAudio').classList.remove('visible'); };
+        document.getElementById('uiHueSlider').oninput = (e) => {
+            document.documentElement.style.setProperty('--hue', e.target.value);
+            setup();
+        };
+
+        window.onload = () => { setup(); initCloudinary(); loop(); };
+        window.onresize = setup;
+    </script>
+</body>
+</html>
+
